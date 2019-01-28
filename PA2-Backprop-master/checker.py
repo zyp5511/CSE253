@@ -59,8 +59,8 @@ def main():
     for layer_idx, layer in enumerate(nnet.layers):
         if isinstance(layer, neuralnet.Layer):
             layer_no += 1
-            print(layer.w[:,1])
-            print(benchmark_data['nnet'].layers[layer_idx].x[:, 1])
+            #print(layer.w[:,1])
+            #print(benchmark_data['nnet'].layers[layer_idx].x[:, 1])
 
             error_x = np.sum(np.abs(benchmark_data['nnet'].layers[layer_idx].x - layer.x))
             error_w = np.sum(np.abs(benchmark_data['nnet'].layers[layer_idx].w - layer.w))
@@ -70,21 +70,21 @@ def main():
 
             check_error(error_x, "Layer{} Input".format(layer_no))
             check_error(error_w, "Layer{} Weights".format(layer_no))
-            print(layer.w)
-            print(benchmark_data['nnet'].layers[layer_idx].w)
+            #print(layer.w)
+            #print(benchmark_data['nnet'].layers[layer_idx].w)
             check_error(error_b, "Layer{} Biases".format(layer_no))
-            print(layer.b)
-            print(benchmark_data['nnet'].layers[layer_idx].b)
+            #print(layer.b)
+            #print(benchmark_data['nnet'].layers[layer_idx].b)
             check_error(error_d_w, "Layer{} Weight Gradient".format(layer_no))
-            print(layer.d_w)
-            print(benchmark_data['nnet'].layers[layer_idx].d_w)
+            #print(layer.d_w)
+            #print(benchmark_data['nnet'].layers[layer_idx].d_w)
             check_error(error_d_b, "Layer{} Bias Gradient".format(layer_no))
-            print(layer.d_b)
-            print(benchmark_data['nnet'].layers[layer_idx].d_b)
-            print(error_w)
-            print(error_b)
-            print(error_d_w)
-            print(error_d_b)
+            #print(layer.d_b)
+            #print(benchmark_data['nnet'].layers[layer_idx].d_b)
+            #print(error_w)
+            #print(error_b)
+            #print(error_d_w)
+            #print(error_d_b)
 
 
     print(err_sigmoid)
