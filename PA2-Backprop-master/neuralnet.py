@@ -6,9 +6,9 @@ from PIL import Image
 
 
 config = {}
-config['layer_specs'] = [784, 50, 10]  # The length of list denotes number of hidden layers; each element denotes number of neurons in that layer; first element is the size of input layer, last element is the size of output layer.
-config['activation'] = 'ReLU' # Takes values 'sigmoid', 'tanh' or 'ReLU'; denotes activation function for hidden layers
-config['batch_size'] = 100  # Number of training samples per batch to be passed to network
+config['layer_specs'] = [784, 100, 100, 10]  # The length of list denotes number of hidden layers; each element denotes number of neurons in that layer; first element is the size of input layer, last element is the size of output layer.
+config['activation'] = 'sigmoid' # Takes values 'sigmoid', 'tanh' or 'ReLU'; denotes activation function for hidden layers
+config['batch_size'] = 1000  # Number of training samples per batch to be passed to network
 config['epochs'] = 60  # Number of epochs to train the model
 config['early_stop'] = True# Implement early stopping or not
 config['early_stop_epoch'] = 50  # Number of epochs for which validation loss increases to be counted as overfitting
@@ -157,10 +157,12 @@ class Neuralnetwork():
         self.x = None  # Save the input to forward_pass in this
         self.y = None  # Save the output vector of model in this
         self.v = []
+        self.v_b = []
         self.targets = None  # Save the targets in forward_pass in this variable
         for i in range(len(config['layer_specs']) - 1):
             self.layers.append( Layer(config['layer_specs'][i], config['layer_specs'][i+1]) )
             self.v.append(self.layers[-1].w*0)
+            self.v_b.append(self.layers[-1].b*0)
             if i < len(config['layer_specs']) - 2:
                 self.layers.append(Activation(config['activation']))
 
@@ -218,8 +220,11 @@ class Neuralnetwork():
         for l in self.layers:
             if isinstance(l, Layer):
                 l.w = l.w +l.d_w*lr + self.v[i]*gamma*m + lam*l.w
-                l.b = l.b + l.d_b*lr
+                l.b = l.b + l.d_b*lr + self.v[i]*gamma*m
+                l.b = l.b + l.d_w*lr
+                print(i)
                 self.v[i] = self.v[i]*gamma*m + l.d_w*lr
+                self.v_b[i] = self.v_b[i]*gamma*m + l.d_b*(1-gamma)*m
                 i += 1
 
 def trainer_check_gradient(model, X_train, y_train, flag = "input_to_hidden_w_1"):
