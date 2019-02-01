@@ -1,20 +1,21 @@
 import numpy as np
 import pickle
 import copy
+import matplotlib.pyplot as plt
 from os import listdir
 from PIL import Image
 
 
 config = {}
-config['layer_specs'] = [784, 100, 100, 10]  # The length of list denotes number of hidden layers; each element denotes number of neurons in that layer; first element is the size of input layer, last element is the size of output layer.
-config['activation'] = 'sigmoid' # Takes values 'sigmoid', 'tanh' or 'ReLU'; denotes activation function for hidden layers
+config['layer_specs'] = [784,500,500,10]  # The length of list denotes number of hidden layers; each element denotes number of neurons in that layer; first element is the size of input layer, last element is the size of output layer.
+config['activation'] = 'tanh' # Takes values 'sigmoid', 'tanh' or 'ReLU'; denotes activation function for hidden layers
 config['batch_size'] = 1000  # Number of training samples per batch to be passed to network
-config['epochs'] = 60  # Number of epochs to train the model
+config['epochs'] = 200  # Number of epochs to train the model
 config['early_stop'] = True# Implement early stopping or not
-config['early_stop_epoch'] = 50  # Number of epochs for which validation loss increases to be counted as overfitting
-config['L2_penalty'] = 0.0001  # Regularization constant
+config['early_stop_epoch'] = 5  # Number of epochs for which validation loss increases to be counted as overfitting
+config['L2_penalty'] = 0  # Regularization constant
 config['momentum'] = True  # Denotes if momentum is to be applied or not
-config['momentum_gamma'] = 0.9  # Denotes the constant 'gamma' in momentum expression
+config['momentum_gamma'] = 0.7  # Denotes the constant 'gamma' in momentum expression
 config['learning_rate'] = 0.001 # Learning rate of gradient descent algorithm
 
 def softmax(x):
@@ -44,12 +45,15 @@ def load_data(fname):
     """
     fname = 'data/' + fname
     training_data = pickle.load(open(fname, 'rb'), encoding='latin1')
-    images = training_data[:,:784]
+    images = normalize_data(training_data[:,:784])
     labels = oneHot(training_data[:,784],9)
     print("Total number of images:", len(images), "and labels:", len(labels))
 
     return images, labels
-
+def normalize_data(img):
+    img = img.T
+    img = (img - img.min(axis=0)) * (1 / (img.max(axis=0) - img.min(axis=0)))
+    return img.T
 
 class Activation:
     def __init__(self, activation_type = "sigmoid"):
@@ -190,7 +194,6 @@ class Neuralnetwork():
         m = np.array(logits).shape[0]
         n = np.array(logits).shape[1]
         #logits = np.array(logits, dtype=np.float)
-        print(logits.min())
         #targets = targets[mask]
         output = -(1.0 / (m * n)) * np.sum(np.multiply(targets, np.log(logits)))
         return output
@@ -219,12 +222,12 @@ class Neuralnetwork():
         i = 0
         for l in self.layers:
             if isinstance(l, Layer):
-                l.w = l.w +l.d_w*lr + self.v[i]*gamma*m + lam*l.w
-                l.b = l.b + l.d_b*lr + self.v[i]*gamma*m
-                l.b = l.b + l.d_w*lr
-                print(i)
+                l.w = l.w + l.d_w*lr + self.v[i]*gamma*m + lam*l.w
+                l.b = l.b + l.d_b*lr + self.v_b[i]*gamma*m + lam*l.b
+                #l.b = l.b + l.d_w*lr
+                #print(i)
                 self.v[i] = self.v[i]*gamma*m + l.d_w*lr
-                self.v_b[i] = self.v_b[i]*gamma*m + l.d_b*(1-gamma)*m
+                self.v_b[i] = self.v_b[i]*gamma*m + l.d_b*lr#*(1-gamma)
                 i += 1
 
 def trainer_check_gradient(model, X_train, y_train, flag = "input_to_hidden_w_1"):
@@ -281,11 +284,14 @@ def trainer(model, X_train, y_train, X_valid, y_valid, config):
     Write the code to train the network. Use values from config to set parameters
     such as L2 penalty, number of epochs, momentum, etc.
     """
-    loss_train = []
+    loss_train_overall = []
+    loss_valid_overall = []
+    acc_train_overall = []
+    acc_valid_overall = []
     loss_valid = float('inf')
     num = 0
-    for i in range(config['epochs']):
 
+    for i in range(config['epochs']):
         for j in range(len(X_train)):
             start = j*config['batch_size']
             end = (j+1)*config['batch_size']
@@ -294,13 +300,17 @@ def trainer(model, X_train, y_train, X_valid, y_valid, config):
             batch_x = X_train[start:end,:]
             batch_y = y_train[start:end,:]
             [loss_train_temp, prediction] = model.forward_pass(batch_x,batch_y)
-            loss_train.append(loss_train_temp)
             model.backward_pass()
             model.update_weight()
         [loss_valid_temp, pred_v] = model.forward_pass(X_valid,y_valid)
         [loss_train_temp, pred_t] = model.forward_pass(X_train, y_train)
-        line = "Interation" + str(i) + "training loss is " + str(loss_train_temp) + "validation loss " + str(loss_valid_temp)
-        print(line)
+        acc_train_temp = accuracy(pred_t, y_train)
+        acc_valid_temp = accuracy(pred_v, y_valid)
+
+        loss_train_overall.append(loss_train_temp)
+        loss_valid_overall.append(loss_valid_temp)
+        acc_train_overall.append(acc_train_temp)
+        acc_valid_overall.append(acc_valid_temp)
 
         if config['early_stop'] == True:
             if loss_valid_temp <= loss_valid:
@@ -309,11 +319,21 @@ def trainer(model, X_train, y_train, X_valid, y_valid, config):
             else:
                 num +=1
                 if num > config['early_stop_epoch']:
-                    line = "Early stop iteration" + str(i) + "training loss is " + str(loss_train_temp) + "validation loss " + str(loss_valid_temp)
-                    line2 = "Training accuracy " + str(accuracy(pred_t, y_train)) + "Validation accuracy " + str(accuracy(pred_v, y_valid))
+                    line = "Early stop iteration " + str(i) + "training loss is " + str(loss_train_temp) + "validation loss " + str(loss_valid_temp)
+                    line2 = "Training accuracy " + str(acc_train_temp) + " Validation accuracy " + str(acc_valid_temp)
                     print(line)
                     print(line2)
+                    #display_loss(loss_train_overall,loss_valid_overall)
+                    #display_accuracy(acc_train_overall, acc_valid_overall)
                     break
+        line = "Epoch " + str(i) + " training loss is " + str(loss_train_temp) + " validation loss " + str(loss_valid_temp)
+        print(line)
+
+        line_1 = "Training acc is " + str(acc_train_temp) + " Validation accuracy " + str(acc_valid_temp)
+        print(line_1)
+
+    display_loss(loss_train_overall, loss_valid_overall)
+    display_accuracy(acc_train_overall, acc_valid_overall)
 
 def accuracy(pred, t):
     return sum(pred.argmax(axis=1) == t.argmax(axis=1)) / pred.shape[0]
@@ -325,6 +345,31 @@ def test(model, X_test, y_test, config):
     [_,prediction] = model.forward_pass(X_test)
 
     return accuracy(prediction,y_test)
+
+def display_loss(loss_train,loss_vali):
+    epc = list(range(len(loss_train)))
+    epc = [x + 1 for x in epc]
+    plt.plot(epc, loss_train, label='cross entropy loss_train')
+    plt.plot(epc, loss_vali, label='cross entropy loss_validation')
+    plt.title('Losses versus training epochs at learning rate ' + str(config['learning_rate']) +
+              ' Momentum ' + str(config['momentum_gamma']) + ' L2 ' + str(config['L2_penalty']))
+    plt.xlabel('Number of epochs')
+    plt.ylabel('Loss over epochs')
+    plt.legend(bbox_to_anchor=(1, 1), loc='upper right', ncol=1)
+    plt.show()
+
+def display_accuracy(acc_train,acc_vali):
+    epc = list(range(len(acc_train)))
+    epc = [x + 1 for x in epc]
+    plt.plot(epc, acc_train, label='acc of train')
+    plt.plot(epc, acc_vali, label='acc of validation')
+    plt.title('Accuracy versus training epochs at learning rate ' + str(config['learning_rate']) +
+              ' Momentum ' + str(config['momentum_gamma']) + ' L2 ' + str(config['L2_penalty']))
+    plt.xlabel('Number of epochs')
+    plt.ylabel('Accuracy over epochs')
+    plt.legend(bbox_to_anchor=(1, 1), loc='upper right', ncol=1)
+    plt.show()
+
 
 
 if __name__ == "__main__":
@@ -344,6 +389,6 @@ if __name__ == "__main__":
     #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
     #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
     trainer(model, X_train, y_train, X_valid, y_valid, config)
-    #test_acc = test(model, X_test, y_test, config)
-    #print("test acc is " + str(test_acc))
+    test_acc = test(model, X_test, y_test, config)
+    print("test acc is " + str(test_acc))
 
