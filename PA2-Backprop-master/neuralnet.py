@@ -2,19 +2,20 @@ import numpy as np
 import pickle
 import copy
 import matplotlib.pyplot as plt
+import statistics
 from os import listdir
 from PIL import Image
 
 
 config = {}
-config['layer_specs'] = [784,500,500,10]  # The length of list denotes number of hidden layers; each element denotes number of neurons in that layer; first element is the size of input layer, last element is the size of output layer.
+config['layer_specs'] = [784,50,10]  # The length of list denotes number of hidden layers; each element denotes number of neurons in that layer; first element is the size of input layer, last element is the size of output layer.
 config['activation'] = 'tanh' # Takes values 'sigmoid', 'tanh' or 'ReLU'; denotes activation function for hidden layers
 config['batch_size'] = 1000  # Number of training samples per batch to be passed to network
 config['epochs'] = 200  # Number of epochs to train the model
-config['early_stop'] = True# Implement early stopping or not
+config['early_stop'] = False# Implement early stopping or not
 config['early_stop_epoch'] = 5  # Number of epochs for which validation loss increases to be counted as overfitting
 config['L2_penalty'] = 0  # Regularization constant
-config['momentum'] = True  # Denotes if momentum is to be applied or not
+config['momentum'] = False  # Denotes if momentum is to be applied or not
 config['momentum_gamma'] = 0.7  # Denotes the constant 'gamma' in momentum expression
 config['learning_rate'] = 0.001 # Learning rate of gradient descent algorithm
 
@@ -162,6 +163,7 @@ class Neuralnetwork():
         self.y = None  # Save the output vector of model in this
         self.v = []
         self.v_b = []
+        self.n_l = -1
         self.targets = None  # Save the targets in forward_pass in this variable
         for i in range(len(config['layer_specs']) - 1):
             self.layers.append( Layer(config['layer_specs'][i], config['layer_specs'][i+1]) )
@@ -169,6 +171,7 @@ class Neuralnetwork():
             self.v_b.append(self.layers[-1].b*0)
             if i < len(config['layer_specs']) - 2:
                 self.layers.append(Activation(config['activation']))
+        print(self.layers)
 
     def forward_pass(self, x, targets=None):
         """
@@ -203,11 +206,19 @@ class Neuralnetwork():
         implement the backward pass for the whole network.
         hint - use previously built functions.
         '''
+        ly = 0
         delta = (self.targets - self.y)
-        for l in reversed(self.layers):
-            delta = l.backward_pass(delta)
+
         if return_flag:
-            return delta
+            for l in reversed(self.layers):
+                delta = l.backward_pass(delta)
+                if ly == self.n_l:
+                    return delta
+                ly += 1
+        else:
+            for l in reversed(self.layers):
+                delta = l.backward_pass(delta)
+
 
 
     def update_weight(self):
@@ -239,39 +250,43 @@ def trainer_check_gradient(model, X_train, y_train, flag = "input_to_hidden_w_1"
     model_plus = copy.deepcopy(model)
     model_minus = copy.deepcopy(model)
     model_temp = copy.deepcopy(model)
+    batch_x = X_train[0:1, :]
+    batch_y = y_train[0:1, :]
 
+    [loss_train, _] = model_temp.forward_pass(batch_x, batch_y)
+    model_temp.backward_pass()
     if flag is "input_to_hidden_w_1":
-        model_plus.layers[0].w += eps
-        model_minus.layers[0].w -= eps
+        model_plus.layers[0].w[0,0] += eps
+        model_minus.layers[0].w[0,0] -= eps
+        bp_gradient = model_temp.layers[0].d_w[0,0]
     if flag is "input_to_hidden_w_2":
-        model_plus.layers[0].w[1,1] = model_plus.layers[0].w[1,1]+eps
-        model_minus.layers[0].w[1,1] = model_minus.layers[0].w[1, 1]-eps
+        model_plus.layers[0].w[1, 1] = model_plus.layers[0].w[1, 1]+eps
+        model_minus.layers[0].w[1, 1] = model_minus.layers[0].w[1, 1]-eps
+        bp_gradient = model_temp.layers[0].d_w[1, 1]
     if flag is "hidden_to_output_w_1":
-        model_plus.layers[-1].w[1,1] = model_plus.layers[-1].w[1,1]+eps
+        model_plus.layers[-1].w[1, 1] = model_plus.layers[-1].w[1, 1]+eps
         model_minus.layers[-1].w[1, 1] = model_minus.layers[-1].w[1, 1]-eps
+        bp_gradient = model_temp.layers[-1].d_w[1, 1]
     if flag is "hidden_to_output_w_2":
-        model_plus.layers[-1].w[0,1] = model_plus.layers[-1].w[0,1]+eps
-        model_minus.layers[-1].w[0, 1] = model_minus.layers[-1].w[0,1]-eps
-    if flag is "hidden_to_output_w_2":
-        model_plus.layers[-1].w[0,1] = model_plus.layers[-1].w[0,1]+eps
+        model_plus.layers[-1].w[0, 1] = model_plus.layers[-1].w[0, 1]+eps
         model_minus.layers[-1].w[0, 1] = model_minus.layers[-1].w[0, 1]-eps
+        bp_gradient = model_temp.layers[-1].d_w[0, 1]
     if flag is "hidden_b_1":
-        model_plus.layers[2].b[0] = model_plus.layers[2].b[0]+eps
-        model_minus.layers[2].b[0] = model_minus.layers[2].b[0]-eps
-    if flag is "output_b_1":
-        model_plus.layers[-1].b[0] = model_plus.layers[-1].b[0]+eps
-        model_minus.layers[-1].b[0] = model_minus.layers[-1].b[0]-eps
+        model_plus.layers[2].b[0][0]  = model_plus.layers[2].b[0][0]  + eps
+        model_minus.layers[2].b[0][0]  = model_minus.layers[2].b[0][0] - eps
+        bp_gradient = model_temp.layers[2].d_b[0]
 
-    batch_x = X_train[0:1,:]
-    batch_y = y_train[0:1,:]
+    if flag is "output_b_1":
+        model_plus.layers[-1].b[0][0] = model_plus.layers[-1].b[0][0] + eps
+        model_minus.layers[-1].b[0][0] = model_minus.layers[-1].b[0][0] - eps
+        bp_gradient = model_temp.layers[-1].d_b[0]
+
+    bp_gradient = bp_gradient/10
     [loss_train_minus, _] = model_minus.forward_pass(batch_x,batch_y)
-    [loss_train,_] = model_temp.forward_pass(batch_x, batch_y)
     [loss_train_plus, _] = model_plus.forward_pass(batch_x, batch_y)
-    bp_gradient = sum(sum(model_temp.backward_pass(return_flag=True)))#/batch_y.shape[0]/batch_y.shape[1]
-    #[loss_train, _] = model_temp.forward_pass(batch_x, batch_y)
     cal_gradient = (loss_train_plus - loss_train_minus)/(2*eps)
 
-
+    print(flag + " " + str(abs(cal_gradient) - abs(bp_gradient)))
     line = flag + " bp_gradient is " + str(bp_gradient) + " (E_plus-E_minus)/2e = "+\
            str(cal_gradient)+ " Error of eps plus is "\
            + str(loss_train_plus) + " Error of eps minus is " + str(loss_train_minus)
@@ -288,6 +303,12 @@ def trainer(model, X_train, y_train, X_valid, y_valid, config):
     loss_valid_overall = []
     acc_train_overall = []
     acc_valid_overall = []
+
+    loss_train_batch = []
+    #loss_valid_batch = []
+    acc_train_batch = []
+    #acc_valid_batch = []
+
     loss_valid = float('inf')
     num = 0
 
@@ -299,17 +320,31 @@ def trainer(model, X_train, y_train, X_valid, y_valid, config):
                 break
             batch_x = X_train[start:end,:]
             batch_y = y_train[start:end,:]
-            [loss_train_temp, prediction] = model.forward_pass(batch_x,batch_y)
+            [loss_train_temp, prediction] = model.forward_pass(batch_x, batch_y)
             model.backward_pass()
             model.update_weight()
-        [loss_valid_temp, pred_v] = model.forward_pass(X_valid,y_valid)
-        [loss_train_temp, pred_t] = model.forward_pass(X_train, y_train)
-        acc_train_temp = accuracy(pred_t, y_train)
+
+            [loss_train_mini, pred_t_mini] = model.forward_pass(batch_x, batch_y)
+            #[loss_valid_mini, pred_v_mini] = model.forward_pass(X_valid, y_valid)
+            acc_train_mini = accuracy(pred_t_mini, batch_y)
+            #acc_valid_mini = accuracy(pred_v_mini, y_valid)
+
+            loss_train_batch.append(loss_train_mini)
+            #loss_valid_batch.append(loss_valid_mini)
+            acc_train_batch.append(acc_train_mini)
+            #acc_valid_batch.append(acc_valid_mini)
+
+        [loss_valid_temp, pred_v] = model.forward_pass(X_valid, y_valid)
+        #[loss_train_temp, pred_t] = model.forward_pass(X_train, y_train)
+
+        loss_train_avg = statistics.mean(loss_train_batch)
+        #loss_valid_avg = statistics.mean(loss_valid_batch)
+        acc_train_avg = statistics.mean(acc_train_batch)
         acc_valid_temp = accuracy(pred_v, y_valid)
 
-        loss_train_overall.append(loss_train_temp)
+        loss_train_overall.append(loss_train_avg)
         loss_valid_overall.append(loss_valid_temp)
-        acc_train_overall.append(acc_train_temp)
+        acc_train_overall.append(acc_train_avg)
         acc_valid_overall.append(acc_valid_temp)
 
         if config['early_stop'] == True:
@@ -318,18 +353,19 @@ def trainer(model, X_train, y_train, X_valid, y_valid, config):
                 num = 0
             else:
                 num +=1
+                loss_valid = loss_valid_temp
                 if num > config['early_stop_epoch']:
-                    line = "Early stop iteration " + str(i) + "training loss is " + str(loss_train_temp) + "validation loss " + str(loss_valid_temp)
-                    line2 = "Training accuracy " + str(acc_train_temp) + " Validation accuracy " + str(acc_valid_temp)
+                    line = "Early stop iteration " + str(i) + " training loss is " + str(loss_train_avg) + " validation loss " + str(loss_valid_temp)
+                    line2 = "Training accuracy " + str(acc_train_avg) + " Validation accuracy " + str(acc_valid_temp)
                     print(line)
                     print(line2)
                     #display_loss(loss_train_overall,loss_valid_overall)
                     #display_accuracy(acc_train_overall, acc_valid_overall)
                     break
-        line = "Epoch " + str(i) + " training loss is " + str(loss_train_temp) + " validation loss " + str(loss_valid_temp)
+        line = "Epoch " + str(i) + " training loss is " + str(loss_train_avg) + " validation loss " + str(loss_valid_temp)
         print(line)
 
-        line_1 = "Training acc is " + str(acc_train_temp) + " Validation accuracy " + str(acc_valid_temp)
+        line_1 = "Training acc is " + str(acc_train_avg) + " Validation accuracy " + str(acc_valid_temp)
         print(line_1)
 
     display_loss(loss_train_overall, loss_valid_overall)
@@ -382,12 +418,12 @@ if __name__ == "__main__":
     X_train, y_train = load_data(train_data_fname)
     X_valid, y_valid = load_data(valid_data_fname)
     X_test, y_test = load_data(test_data_fname)
-    #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
-    #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_2")
-    #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
-    #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
-    #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
-    #trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
+    trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_1")
+    trainer_check_gradient(model, X_train, y_train, flag="input_to_hidden_w_2")
+    trainer_check_gradient(model, X_train, y_train, flag="hidden_to_output_w_1")
+    trainer_check_gradient(model, X_train, y_train, flag="hidden_to_output_w_2")
+    trainer_check_gradient(model, X_train, y_train, flag="hidden_b_1")
+    trainer_check_gradient(model, X_train, y_train, flag="output_b_1")
     trainer(model, X_train, y_train, X_valid, y_valid, config)
     test_acc = test(model, X_test, y_test, config)
     print("test acc is " + str(test_acc))
