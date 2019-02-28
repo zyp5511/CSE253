@@ -10,10 +10,10 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
-
+from random import shuffle
 from data_handler import *
 import utils
-
+import itertools
 from keras.utils import to_categorical
 
 # %%
@@ -24,18 +24,46 @@ opts.val_data_file = "val.txt"
 opts.n_epochs = 100
 opts.batch_size = 1  # TODO minibatch size 1 for simplifying / taking chunks of 100
 opts.seq_length = 100
-opts.learning_rate = 0.1
+opts.learning_rate = 0.001
 opts.lr_decay = 0.99
 opts.hidden_size = 100
-opts.generate_seq_length = 10
-opts.temperature = 0.6
+opts.generate_seq_length = 700
+opts.temperature = 1
 opts.model_name = "LSTM"
 opts.checkpoints_dir = "./checkpoints/" + opts.model_name
 
 
 # %%
+'''
 def read_batches(list_index, opts):
     # discards the last chunks
+    shuffle(list_index)
+    merged_song = list(itertools.chain.from_iterable(list_index))
+    num_batch = math.ceil(1.0 * len(merged_song) / opts.seq_length)
+    for batch_index in range(0, num_batch):
+        if batch_index == num_batch - 1:
+            temp = merged_song[batch_index * opts.seq_length:]
+            if len(temp) <= 1:
+                inputs = temp
+                targets = []
+            else:
+                inputs = temp
+                targets = temp[1:]
+            inputs = np.pad(np.array(inputs), (0, opts.seq_length - len(inputs)), 'constant',
+                                constant_values=(0, 93))
+            targets = np.pad(np.array(targets), (0, opts.seq_length - len(targets)), 'constant',
+                                 constant_values=(0, 93))
+        else:
+            inputs = np.array(merged_song[batch_index * opts.seq_length:(batch_index + 1) * opts.seq_length])
+            targets = np.array(merged_song[batch_index * opts.seq_length + 1:(batch_index + 1) * opts.seq_length + 1])
+        inputs = np.expand_dims(inputs, axis=0)
+        targets = np.expand_dims(targets, axis=0)
+        input_tensors = torch.LongTensor(inputs)
+        target_tensors = torch.LongTensor(targets)
+        yield input_tensors, target_tensors
+'''
+def read_batches(list_index, opts):
+    #shuffle(list_index)
     for itr in range(0, len(list_index)):
         song = list_index[itr]
         song_length = len(song)
@@ -61,8 +89,8 @@ def read_batches(list_index, opts):
             input_tensors = torch.LongTensor(inputs)
             target_tensors = torch.LongTensor(targets)
             yield input_tensors, target_tensors
-    """
 
+'''
     chunk = opts.batch_size*opts.seq_length
 
     for i in range(0, batch_num): 
@@ -89,10 +117,8 @@ def read_batches(list_index, opts):
 
             input_tensors = torch.LongTensor(inputs).view(1, len(inputs))
             output_tensors = torch.LongTensor(targets).view(1, len(targets))
-
-
-        yield input_tensors, output_tensors
-    """
+        yield input_tensors, output_tensor
+'''
 
 
 # %%
@@ -210,13 +236,13 @@ def training_model(train_characters, val_characters, vocab_size, idx_dict, model
 
 def evaluate(data, model, idx_dict, criterion, opts):
     losses = []
-    hidden = None
+    hidden = model.init_hidden(1)
 
     for i, (inputs, targets) in enumerate(read_batches(data, opts)):
 
         inputs = torch.FloatTensor(to_categorical(inputs, num_classes=vocab_size)).to(computing_device)
         targets = targets.to(computing_device)
-
+        hidden = repackage_hidden(hidden)
         outputs, hidden = model.forward(inputs, hidden)
 
         loss = 0.0
